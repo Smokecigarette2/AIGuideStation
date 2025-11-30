@@ -213,7 +213,7 @@ app = FastAPI(title="Guide Station (Gemini RAG)")
 # --- CORS, чтобы React на http://localhost:3000 мог ходить к бэку ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"], #allows all origins (React local + Render UI + anything)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
