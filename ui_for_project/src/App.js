@@ -54,7 +54,7 @@ function App() {
   const inFlight = useRef(false);
 
   const ORG_ID = "my_university";
-  const BACKEND_URL = "https://aiguidestation.onrender.com"; // ⭐ your Render backend
+  const BACKEND_URL = "https://aiguidestation.onrender.com"; //  your Render backend
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
