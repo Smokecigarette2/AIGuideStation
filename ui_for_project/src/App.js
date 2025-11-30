@@ -54,13 +54,14 @@ function App() {
   const inFlight = useRef(false);
 
   const ORG_ID = "my_university";
+  const BACKEND_URL = "https://aiguidestation.onrender.com"; // ⭐ your Render backend
 
-// eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     questionRef.current = question;
   }, [question]);
 
-// eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -77,7 +78,8 @@ function App() {
 
     rec.onresult = (event) => {
       const text = event.results[0][0].transcript.trim();
-      const combined = (questionRef.current ? questionRef.current + " " : "") + text;
+      const combined =
+        (questionRef.current ? questionRef.current + " " : "") + text;
 
       pendingVoiceQuestionRef.current = combined;
       setQuestion(combined);
@@ -117,7 +119,7 @@ function App() {
     }
   };
 
-// eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!("speechSynthesis" in window)) {
       console.warn("speechSynthesis не поддерживается.");
@@ -198,10 +200,11 @@ function App() {
 
     playNext();
   };
-// eslint-disable-next-line react-hooks/exhaustive-deps
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (answer && ttsEnabled) speakText(answer);
-  }, [answer]);
+  }, [answer, ttsEnabled]);
 
   // ==========================
   //  askServer()
@@ -218,7 +221,7 @@ function App() {
     stopTTS();
 
     try {
-      const response = await fetch("http://localhost:8000/ask", {
+      const response = await fetch(`${BACKEND_URL}/ask`, {   // ⭐ changed URL
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
