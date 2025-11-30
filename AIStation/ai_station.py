@@ -27,94 +27,44 @@ GENERATION_MODEL = "gemini-2.5-flash"
 #  2. IN-MEMORY STORE
 # ======================
 
+# org_id -> list of docs
+# doc: {"id": int, "text": str, "embedding": List[float]}
 ORG_STORE: Dict[str, List[Dict[str, Any]]] = {}
 DOC_ID_COUNTER = 1
 
+# ниже порога — предположительный ответ
 SIMILARITY_THRESHOLD = 0.35
-
-# ======================
-#  2.1 PRELOADED UNIVERSITY DATA (prototype)
-# ======================
-
-UNIVERSITY_ORG_ID = "my_university"
-
-UNIVERSITY_DOCS = [
-    "Главный вход находится со стороны Манаса.",
-    "На первом этаже расположен ресепшн.",
-    "Гардероб находится рядом с входом.",
-    "Камеры хранения доступны на первом этаже.",
-    "Буфет работает с 9:00 до 17:00.",
-    "Столовая открыта с 9:00 до 18:00.",
-    "Библиотека находится на 3 этаже.",
-    "Библиотека открыта с 9:00 до 18:00.",
-    "Учебная часть находится в кабинете 108.",
-    "Справки выдаются в кабинете 105 с 10:00 до 16:00.",
-    "Документы принимают в кабинете 204 с 9:00 до 17:00.",
-    "Деканат факультета CS расположен в кабинете 215.",
-    "Деканат факультета IT расположен в кабинете 220.",
-    "Актовый зал находится на 2 этаже.",
-    "IT-лаборатория находится в кабинете 210.",
-    "Wi-Fi доступен по студенческому логину.",
-    "Термополка для разогрева еды стоит на первом этаже.",
-    "Лифт расположен справа от ресепшена.",
-    "Лестницы находятся по обе стороны коридора.",
-    "Коворкинг открыт с 9:00 до 20:00.",
-    "Коворкинг находится на втором этаже.",
-    "Медицинский кабинет расположен в аудитории 112.",
-    "Аудитории начинаются с первого по четвертый этаж.",
-    "Кабинеты с 100-х номеров на первом этаже.",
-    "Кабинеты с 200-х номеров на втором этаже.",
-    "Кабинеты с 300-х номеров на третьем этаже.",
-    "Кабинеты с 400-х номеров на четвертом этаже.",
-    "Кафедра программирования находится на 3 этаже.",
-    "Спортзал расположен в подвальном этаже.",
-    "В спортзале есть раздевалки.",
-    "Автоматы с кофе стоят на каждом этаже.",
-    "Автоматы с перекусами стоят у лестницы.",
-    "Университет работает с 8:00 до 20:00.",
-    "Охрана находится у входа.",
-    "Студенческий билет проверяют на входе.",
-    "В университете есть небольшая зона отдыха.",
-    "Принтер для студентов расположен в библиотеке.",
-    "Ксерокс доступен в библиотеке.",
-    "Фотозона IITU стоит на первом этаже.",
-    "На втором этаже есть мягкие диваны для отдыха.",
-    "На третьем этаже есть столы для групповой работы.",
-    "В университете есть питьевые фонтанчики.",
-    "Рядом с университетом есть несколько кофеен.",
-    "Парковка для студентов находится за зданием.",
-    "Парковка для преподавателей расположена сбоку.",
-    "Окна большинства кабинетов выходят на Манаса.",
-    "В здании работает система видеонаблюдения.",
-    "В университете регулярно проходят мероприятия.",
-    "На первом этаже можно получить карту посетителя.",
-    "Утерянные вещи можно оставить на ресепшене."
-]
 
 # ======================
 #  3. MODELS (Pydantic)
 # ======================
 
+
 class AddDocumentRequest(BaseModel):
     org_id: str
     text: str
 
+
 class AskRequest(BaseModel):
     org_id: str
     question: str
-    language: str = "ru"
+    language: str = "ru"   # пока просто лежит, на будущее
     top_k: int = 5
+
 
 class AskResponse(BaseModel):
     answer_text: str
     mode: str
     results: List[Dict[str, Any]]
 
+
 # ======================
 #  4. EMBEDDINGS
 # ======================
 
+
 def get_embedding(text: str) -> List[float]:
+    """Получаем embedding через Gemini."""
     result = genai.embed_content(
         model=EMBEDDING_MODEL,
         content=text,
@@ -122,11 +72,14 @@ def get_embedding(text: str) -> List[float]:
     )
     return result["embedding"]
 
+
 # ======================
 #  5. DOCUMENT MANAGEMENT
 # ======================
 
+
 def add_document(org_id: str, text: str) -> Dict[str, Any]:
+    """Добавляем документ в память для конкретной организации."""
     global DOC_ID_COUNTER
 
     emb = get_embedding(text)
@@ -139,6 +92,7 @@ def add_document(org_id: str, text: str) -> Dict[str, Any]:
 
     ORG_STORE.setdefault(org_id, []).append(doc)
     DOC_ID_COUNTER += 1
+
     return doc
 
 
@@ -148,54 +102,91 @@ def cosine_similarity(vec_a: np.ndarray, vec_b: np.ndarray) -> float:
         return 0.0
     return float(np.dot(vec_a, vec_b) / denom)
 
-def search(org_id: str, query: str, top_k: int = 5):
+
+def search(org_id: str, query: str, top_k: int = 5) -> List[Tuple[Dict[str, Any], float]]:
+    """Поиск ближайших документов по org_id."""
     docs = ORG_STORE.get(org_id)
     if not docs:
         return []
 
     query_emb = np.array(get_embedding(query), dtype=np.float32)
 
-    scored = []
+    scored: List[Tuple[Dict[str, Any], float]] = []
+
     for d in docs:
-        sim = cosine_similarity(query_emb, np.array(d["embedding"], dtype=np.float32))
+        doc_vec = np.array(d["embedding"], dtype=np.float32)
+        sim = cosine_similarity(query_emb, doc_vec)
         scored.append((d, sim))
 
     scored.sort(key=lambda x: x[1], reverse=True)
     return scored[:top_k]
 
+
 # ======================
-#  6. GENERATION
+#  6. GEMINI ANSWERING
 # ======================
 
-def build_answer(question: str, docs_with_scores):
+
+def build_answer(question: str,
+                 docs_with_scores: List[Tuple[Dict[str, Any], float]]) -> Tuple[str, str]:
+    """
+    Возвращает (answer_text, mode), где mode:
+    - "strict"  — ответ только по базе
+    - "approx"  — предположительный ответ с дисклеймером
+    """
+
     if not docs_with_scores:
         best_similarity = 0.0
     else:
         best_similarity = docs_with_scores[0][1]
 
+    # ==== MODE B: APPROXIMATE (нет релевантного контекста) ====
     if best_similarity < SIMILARITY_THRESHOLD:
         mode = "approx"
 
         system_prompt = """
 You are Guide Station — an internal assistant for an organization.
-There is NO exact internal information about this question in the system.
-You may give a helpful general answer BUT you must clearly say this is an assumption.
-        """
 
-        context_text = "No reliable internal context is available."
+There is NO exact internal information about this question in the system.
+
+You may give a helpful general answer based on common institutional practices,
+BUT you MUST clearly state that:
+1) exact information for this organization is not present in the system;
+2) your answer is an assumption based on typical cases.
+
+Use soft language such as:
+"usually", "typically", "in most institutions"0, "commonly", "presumably".
+
+Never present your answer as a guaranteed fact.
+Never invent specific details about this particular organization.
+        """.strip()
+
+        context_text = "No reliable internal context is available for this question."
+
+    # ==== MODE A: STRICT FACTUAL (есть нормальный контекст) ====
     else:
         mode = "strict"
+        context_lines = [f"- {d['text']}" for (d, s) in docs_with_scores]
 
-        context_text = "\n".join(
-            f"- {d['text']}" for (d, s) in docs_with_scores
-        )
+        context_text = "\n".join(context_lines)
 
         system_prompt = """
-You are Guide Station — an internal assistant.
-Answer ONLY using the information in the context.
-If information is missing, reply:
+You are Guide Station — an internal assistant for an organization.
+
+Answer ONLY using the information in the CONTEXT below.
+
+If the information needed to answer the question is NOT present in the context,
+you MUST reply exactly:
 "This information is not in the system. Please contact the administrator."
-        """
+
+Do NOT:
+- invent facts;
+- guess;
+- use outside knowledge;
+- add extra assumptions.
+
+Do NOT mention the word "context" explicitly. Just answer naturally.
+        """.strip()
 
     model = genai.GenerativeModel(GENERATION_MODEL)
 
@@ -204,12 +195,14 @@ If information is missing, reply:
 CONTEXT:
 {context_text}
 
-QUESTION:
+USER QUESTION:
 {question}
 """
 
     response = model.generate_content(full_prompt)
-    return response.text, mode
+    answer = response.text
+    return answer, mode
+
 
 # ======================
 #  7. FASTAPI
@@ -217,69 +210,75 @@ QUESTION:
 
 app = FastAPI(title="Guide Station (Gemini RAG)")
 
+# --- CORS, чтобы React на http://localhost:3000 мог ходить к бэку ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"], #allows all origins (React local + Render UI + anything)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
 @app.get("/")
 def root():
-    return {"status": "ok"}
+    return {"status": "ok", "message": "Guide Station backend is alive"}
 
-@app.post("/add")
+
+@app.post("/add", response_model=Dict[str, Any])
 def api_add_document(req: AddDocumentRequest):
+    """
+    Добавляет текст в базу конкретной организации.
+    org_id — любой идентификатор (например, "my_university").
+    """
     if not req.text.strip():
-        raise HTTPException(400, "Text must not be empty")
+        raise HTTPException(status_code=400, detail="Text must not be empty")
 
     doc = add_document(req.org_id, req.text.strip())
-
     return {
         "status": "ok",
         "org_id": req.org_id,
-        "document": {"id": doc["id"], "text": doc["text"]},
+        "document": {
+            "id": doc["id"],
+            "text": doc["text"],
+        },
     }
+
 
 @app.post("/ask", response_model=AskResponse)
 def api_ask(req: AskRequest):
+    """
+    Задает вопрос ассистенту по конкретной организации.
+    """
     if not req.question.strip():
-        raise HTTPException(400, "Question must not be empty")
+        raise HTTPException(status_code=400, detail="Question must not be empty")
 
     docs_with_scores = search(req.org_id, req.question, top_k=req.top_k)
+
     answer, mode = build_answer(req.question, docs_with_scores)
 
     results = [
-        {"id": d["id"], "text": d["text"], "similarity": score}
+        {
+            "id": d["id"],
+            "text": d["text"],
+            "similarity": score,
+        }
         for (d, score) in docs_with_scores
     ]
 
-    return AskResponse(answer_text=answer, mode=mode, results=results)
+    return AskResponse(
+        answer_text=answer,
+        mode=mode,
+        results=results,
+    )
 
-@app.get("/orgs/{org_id}/docs")
+
+@app.get("/orgs/{org_id}/docs", response_model=List[Dict[str, Any]])
 def api_list_docs(org_id: str):
+    """
+    Получить список документов для организации (для дебага).
+    """
     return [
         {"id": d["id"], "text": d["text"]}
         for d in ORG_STORE.get(org_id, [])
     ]
-
-# ======================
-#  8. STARTUP — preload data
-# ======================
-
-@app.on_event("startup")
-async def preload_university_docs():
-    """
-    Загружаем тестовую базу при старте сервера.
-    Работает и локально, и на Render.
-    """
-    global DOC_ID_COUNTER
-    DOC_ID_COUNTER = 1
-
-    ORG_STORE[UNIVERSITY_ORG_ID] = []
-
-    for text in UNIVERSITY_DOCS:
-        add_document(UNIVERSITY_ORG_ID, text)
-
-    print(f"[startup] Loaded {len(UNIVERSITY_DOCS)} docs for {UNIVERSITY_ORG_ID}")
